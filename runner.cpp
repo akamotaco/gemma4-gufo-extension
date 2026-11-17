@@ -257,6 +257,16 @@ public:
                 .in_pass_checkpoint = true,
             },
         .sampling_defaults = SamplingDefaults(),
+        // Beside decoders, prompts keep the 512-token passes the host gave
+        // runners without a profile. The runner has no prefill yield, so a
+        // pass runs unsplit; between passes a decode step batches up to the
+        // eight sessions one forward serves.
+        .scheduling =
+            ext::TextSchedulingProfile{
+                .pass_tokens = std::min<std::size_t>(max_context_, 512),
+                .max_layer_groups = 1,
+                .max_yield_decode_width = 8,
+            },
     };
   }
 

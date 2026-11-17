@@ -59,21 +59,28 @@ the CPU tests, the GPU operator tests and `gemma4.target`, `continuation`,
 the `sampling-defaults` and `tool-native-schemas` functional suites (MTP).
 The 31B models, QAT and the remaining suites were not run on this revision.
 
+On Gufo v0.35.0 (extension API 0.3.20), which adds the required scheduling
+profile: the CPU tests pass, and the HIP build registers the `gemma4`
+provider. The model-backed tests and the functional suites were not repeated.
+
 ## Known limits
 
 - The functional suites `image-detail` (it assumes Qwen's image token counts)
   and `image-count` on 26B-A4B (thinking passes that test's 256-token limit)
   fail for those test reasons.
-- In-place same-slot restore and shared transfer streams (batches of 256 jobs
-  instead of 16) are not upstream.
+- In-place same-slot restore and batches of 256 cache transfers on one stream
+  lease (instead of 16 with a lease each) are not upstream. Gufo's shared
+  transfer-stream leases (v0.35.0) share native streams between leases; they
+  do not change the batch size.
 - The Python tools in `tools/` are untested here. `draft_policy_bench.py` and
   `proposal_replay.py` select policies and draft counts with Gufo's draft
   flags, which Gufo now ignores.
 
 ## Build with Gufo
 
-The extension needs extension API 0.3.0 (upstream `main` since
-[#1118](https://github.com/gufo-org/gufo/pull/1118)); `flake.lock` pins the
+The extension needs extension API 0.3.20 or later (Gufo v0.35.0, which
+requires every text runner to declare a scheduling profile,
+[#1175](https://github.com/gufo-org/gufo/pull/1175)); `flake.lock` pins the
 Gufo revision it was last built and tested with.
 
 ```sh

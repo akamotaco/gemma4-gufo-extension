@@ -77,10 +77,16 @@ cache and metrics suites pass at a 65,536 context, apart from
   `--think on`, needs more. Budgets themselves are honored: 0, 1, 4, 16 and
   64 give exactly that many reasoning tokens, each a prefix of the uncapped
   reasoning.
-- A reasoning budget that ends the thought mid-sentence can leave a
-  `<channel|>` in the answer: Gemma keeps reasoning after the forced close
-  and closes the channel itself (26B-A4B, budget 16 on the suite's prompt;
-  with and without MTP).
+- With a reasoning budget, the answer can contain a raw `<channel|>`. When
+  the budget cuts the thought mid-sentence, Gemma keeps thinking in the
+  answer, then closes the thought itself, and that marker reaches the user
+  (6 of 48 budgeted replies on 26B-A4B, with and without MTP). The fix
+  belongs in Gufo's sampler: after the forced close, never emit `<channel|>`
+  or `<|channel>` again.
+- With a reasoning budget, `reasoning_tokens` can report one more than the
+  budget, though the model thought for exactly the budget. When Gemma writes
+  its `thought` header with a double-newline token, the host counts that
+  token as reasoning (3 of 6 prompts on 26B-A4B).
 - `cache-pressure` fails on `pressure_ui_title`: the side request embeds a
   chat that ends in "Reply with only ALPHA", and Gemma follows it instead of
   the request's own instruction.

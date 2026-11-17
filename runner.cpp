@@ -741,14 +741,23 @@ private:
 
   // A step never ends inside an image or before its closing token: it stops
   // before the image, or takes the whole image when it starts there.
-  [[nodiscard]] static std::size_t StepEnd(
-      const State& gemma, std::span<const TextRunnerToken> prompt,
-      std::size_t offset, std::size_t max_input_tokens) {
+  [[nodiscard]] std::size_t StepEnd(const State& gemma,
+                                    std::span<const TextRunnerToken> prompt,
+                                    std::size_t offset,
+                                    std::size_t max_input_tokens) const {
     if (offset != gemma.session().Position() || offset >= prompt.size()) {
       throw std::logic_error("Gemma 4 prefill offset does not match state");
     }
-    std::size_t end =
-        offset + std::min(max_input_tokens, prompt.size() - offset);
+    // A step ends where Session::Extend ends its first chunk, so the host
+    // regains control (progress, cancellation, a new arrival) between
+    // chunks, as for a prompt alone it budgets the whole of. The forwards
+    // are those of one Extend over the prompt.
+    const std::size_t remaining = prompt.size() - offset;
+    const std::size_t chunk = model_->options().prefill_chunk;
+    if (remaining > chunk + rocm::kSplitRows) {
+      max_input_tokens = std::min(max_input_tokens, chunk);
+    }
+    std::size_t end = offset + std::min(max_input_tokens, remaining);
     if (const auto* images = gemma.images()) {
       for (const auto& image : images->images) {
         const std::size_t first = image.span.offset;

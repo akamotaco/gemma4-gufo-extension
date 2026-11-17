@@ -209,11 +209,29 @@ public:
   [[nodiscard]] std::unique_ptr<ext::ComponentCacheResources>
   CreateComponentCacheResources(cache::ResourceLedger& ledger,
                                 std::size_t) const override {
+    return CreateCacheResources(ledger, CacheHooks());
+  }
+  // Sized from the serving slots: the cache's streams carry no copies (the
+  // adapter gathers on its own stream), so leases share sessions + 1 native
+  // streams instead of each owning one of 64.
+  [[nodiscard]] std::unique_ptr<ext::ComponentCacheResources>
+  CreateComponentCacheResourcesForSessions(cache::ResourceLedger& ledger,
+                                           std::size_t,
+                                           std::size_t sessions) const override {
+    auto hooks = CacheHooks();
+    const auto plan = hip::PlanComponentTransfers(sessions);
+    hooks.transfer_streams = plan.native_streams;
+    hooks.transfer_leases = plan.leases;
+    return CreateCacheResources(ledger, std::move(hooks));
+  }
+  [[nodiscard]] std::unique_ptr<ext::ComponentCacheResources>
+  CreateCacheResources(cache::ResourceLedger& ledger,
+                       hip::ComponentCacheHooks hooks) const {
     auto adapter = std::make_unique<ContinuationAdapter>(model_, max_context_,
                                                          component_identity_);
     auto* gemma = adapter.get();
     auto resources = hip::CreateHipComponentCacheResources(
-        std::move(adapter), ledger, CacheHooks());
+        std::move(adapter), ledger, std::move(hooks));
     // Durable captures require this hook, but the adapter lends no rows, so
     // persistence never reads a slot through it. A copy still waits for the
     // forwards that wrote its rows.

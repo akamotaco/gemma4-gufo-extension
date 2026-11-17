@@ -59,15 +59,31 @@ the CPU tests, the GPU operator tests and `gemma4.target`, `continuation`,
 the `sampling-defaults` and `tool-native-schemas` functional suites (MTP).
 The 31B models, QAT and the remaining suites were not run on this revision.
 
-On Gufo v0.35.0 (extension API 0.3.20), which adds the required scheduling
-profile: the CPU tests pass, and the HIP build registers the `gemma4`
-provider. The model-backed tests and the functional suites were not repeated.
+On Gufo v0.35.0 (extension API 0.3.20, November 17, 2026), with 26B-A4B
+Unsloth UD-Q4_K_XL, the MTP drafter and the BF16 projector, ROCm 10.1: all 19
+`gemma4` ctest tests pass, CPU and model-backed. Of the 63 functional suites
+in the `pr` tier (two sessions, 32,768 context), 61 pass; `image-detail`
+(below) and `reasoning-budget` fail. The full-tier `prefill-scheduling`,
+cache and metrics suites pass at a 65,536 context, apart from
+`cache-pressure` (below).
 
 ## Known limits
 
 - The functional suites `image-detail` (it assumes Qwen's image token counts)
   and `image-count` on 26B-A4B (thinking passes that test's 256-token limit)
   fail for those test reasons.
+- `reasoning-budget` assumes thinking is on by default and that the reasoning
+  and answer fit in 600 tokens; Gemma defaults to thinking off and, with
+  `--think on`, needs more. Budgets themselves are honored: 0, 1, 4, 16 and
+  64 give exactly that many reasoning tokens, each a prefix of the uncapped
+  reasoning.
+- A reasoning budget that ends the thought mid-sentence can leave a
+  `<channel|>` in the answer: Gemma keeps reasoning after the forced close
+  and closes the channel itself (26B-A4B, budget 16 on the suite's prompt;
+  with and without MTP).
+- `cache-pressure` fails on `pressure_ui_title`: the side request embeds a
+  chat that ends in "Reply with only ALPHA", and Gemma follows it instead of
+  the request's own instruction.
 - In-place same-slot restore and batches of 256 cache transfers on one stream
   lease (instead of 16 with a lease each) are not upstream. Gufo's shared
   transfer-stream leases (v0.35.0) share native streams between leases; they

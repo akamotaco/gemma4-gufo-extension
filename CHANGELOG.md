@@ -5,6 +5,10 @@ Notable user-facing changes are recorded here. Versions follow `version` in
 
 ## Unreleased
 
+## 0.2.1 (2026-11-20)
+
+Built on Gufo v0.35.0 (`0260e116`); needs extension API 0.3.20 or later.
+
 ### Bug Fixes
 
 * **moe routing:** a token whose router logits are NaN routes to experts in

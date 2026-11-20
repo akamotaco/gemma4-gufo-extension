@@ -55,6 +55,4 @@ Built on Gufo v0.35.0 (`0260e116`); needs extension API 0.3.20 or later.
 
 Built on Gufo `49380168`; needs extension API 0.2.14 or later.
 
-The first release: Gemma 4 31B, 31B QAT and 26B-A4B on Strix Halo `gfx1151`
-with MTP drafting, prompt lookup, the BF16 vision sidecar, batched sessions,
-native tool calls and the shared serving cache.
+First release as a Gufo source extension.

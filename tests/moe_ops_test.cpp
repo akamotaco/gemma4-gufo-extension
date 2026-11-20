@@ -512,6 +512,96 @@ void CheckNanRouting(std::mt19937& rng) {
   std::cout << "NaN routing: ids in range at 128 and 256 experts\n";
 }
 
+/// Routing of rows with +INF logits: a +INF logit selects as the largest
+/// finite float, so the row's weight goes to its +INF experts in equal parts
+/// (ties to the lower expert) and every other chosen expert gets weight 0,
+/// instead of exp(+INF - +INF) making every weight NaN.
+void CheckInfRouting(std::mt19937& rng) {
+  const float inf = std::numeric_limits<float>::infinity();
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  for (const std::uint32_t experts : {kExperts, 256U}) {
+    constexpr std::uint32_t kRows = 4;
+    auto logits = Normal(std::size_t{kRows} * experts, 1.0F, rng);
+    auto expert_scale = Normal(experts, 0.01F, rng);
+    for (float& s : expert_scale) {
+      s += 1.0F;
+    }
+    // Row 0: one +INF logit. Row 1: two. Row 2: one +INF among NaNs and
+    // finite logits. Row 3: none.
+    logits[9] = inf;
+    logits[std::size_t{experts} + 3] = inf;
+    logits[std::size_t{experts} + experts - 1] = inf;
+    for (std::uint32_t e = 0; e < experts; e += 3) {
+      logits[std::size_t{2} * experts + e] = nan;
+    }
+    logits[std::size_t{2} * experts + 40] = inf;
+    float* d_logits = Device(logits.data(), logits.size());
+    float* d_es = Device(expert_scale.data(), expert_scale.size());
+    std::int32_t* ids = nullptr;
+    float* weights = nullptr;
+    HIP_CHECK(hipMalloc(&ids, kRows * kUsed * sizeof(std::int32_t)));
+    HIP_CHECK(hipMalloc(&weights, kRows * kUsed * sizeof(float)));
+    g4k::MoeRouteArgs a{};
+    a.expert_scale = d_es;
+    a.logits = d_logits;
+    a.raw_logits = true;
+    a.ids = ids;
+    a.weights = weights;
+    a.rows = kRows;
+    a.hidden = kHidden;
+    a.experts = experts;
+    a.used = kUsed;
+    a.eps = kEps;
+    g4k::MoeRoute(a, nullptr);
+    const auto got_ids = Host(ids, kRows * kUsed);
+    const auto got_w = Host(weights, kRows * kUsed);
+    const std::string at = " (" + std::to_string(experts) + " experts)";
+    for (std::uint32_t r = 0; r < kRows; ++r) {
+      const float* row = &logits[std::size_t{r} * experts];
+      std::vector<std::uint32_t> order;
+      for (std::uint32_t e = 0; e < experts; ++e) {
+        if (!std::isnan(row[e])) {
+          order.push_back(e);
+        }
+      }
+      std::stable_sort(order.begin(), order.end(),
+                       [&](auto x, auto y) { return row[x] > row[y]; });
+      order.resize(kUsed);
+      const auto infinite = static_cast<std::size_t>(
+          std::count_if(order.begin(), order.end(),
+                        [&](auto e) { return std::isinf(row[e]); }));
+      double total = 0.0;
+      for (const std::uint32_t e : order) {
+        total += std::exp(double{row[e]} - row[order[0]]);
+      }
+      for (std::uint32_t j = 0; j < kUsed; ++j) {
+        const std::size_t slot = std::size_t{r} * kUsed + j;
+        Require(got_ids[slot] == static_cast<std::int32_t>(order[j]),
+                "+INF routing: row " + std::to_string(r) + " slot " +
+                    std::to_string(j) + " selects expert " +
+                    std::to_string(got_ids[slot]) + at);
+        double want = 0.0;
+        if (infinite == 0) {
+          want = std::exp(double{row[order[j]]} - row[order[0]]) / total;
+        } else if (j < infinite) {
+          want = 1.0 / static_cast<double>(infinite);
+        }
+        want *= expert_scale[order[j]];
+        Require(std::isfinite(got_w[slot]) &&
+                    std::fabs(got_w[slot] - want) < 1e-5,
+                "+INF routing: row " + std::to_string(r) + " slot " +
+                    std::to_string(j) + " weight " +
+                    std::to_string(got_w[slot]) + at);
+      }
+    }
+    HIP_CHECK(hipFree(d_logits));
+    HIP_CHECK(hipFree(d_es));
+    HIP_CHECK(hipFree(ids));
+    HIP_CHECK(hipFree(weights));
+  }
+  std::cout << "+INF routing: finite weights at 128 and 256 experts\n";
+}
+
 /// Group table for `rows` rows with the given expert ids ([rows][kUsed]).
 std::vector<std::int32_t> Groups(const std::vector<std::int32_t>& ids) {
   std::vector<std::int32_t> table(g4k::ExpertGroupInts(kExperts), 0);
@@ -1359,6 +1449,7 @@ int main() {
     std::mt19937 rng(26);
     CheckRouting(rng);
     CheckNanRouting(rng);
+    CheckInfRouting(rng);
     CheckFinish(rng);
     const Format q4k{
         g4k::ExpertFormat::kQ4_K, GgmlType::kQ4_K, 256, 144, {0, 2}, "Q4_K"};

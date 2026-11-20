@@ -9,6 +9,7 @@
 #include <hip/hip_runtime.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
@@ -150,7 +151,10 @@ constexpr int kMaxExpertsPerLane = 8;  // 256 experts
 /// per row: an all-NaN row picks experts 0 .. used - 1 with NaN weights
 /// instead of an id past the expert table (the padding lane `experts`, or
 /// the initial 0x7FFFFFFF at 256 experts), which the routed products and
-/// `counts` would index. Rows of finite logits select as before.
+/// `counts` would index. A +INF logit selects as the largest finite float,
+/// so the softmax splits the row's weight over its +INF experts instead of
+/// computing exp(+INF - +INF) = NaN for every weight. Rows of finite logits
+/// select as before.
 __device__ inline void TopKRow(const float* __restrict__ logits,
                                const float* __restrict__ expert_scale,
                                std::int32_t* __restrict__ ids,
@@ -166,6 +170,8 @@ __device__ inline void TopKRow(const float* __restrict__ logits,
                        : -INFINITY;
     if (isnan(v[i])) {
       v[i] = -INFINITY;
+    } else if (v[i] == INFINITY) {
+      v[i] = FLT_MAX;
     }
   }
   float chosen[8];

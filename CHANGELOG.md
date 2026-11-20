@@ -55,4 +55,36 @@ Built on Gufo v0.35.0 (`0260e116`); needs extension API 0.3.20 or later.
 
 Built on Gufo `49380168`; needs extension API 0.2.14 or later.
 
-First release as a Gufo source extension.
+First release as a Gufo source extension. Gemma 4 moves out of the
+`feat/gemma` Gufo fork into this repository, which builds against upstream
+Gufo instead of a patched copy. Over HTTP on Strix Halo, single-user greedy
+MTP stays within 0.5% of `feat/gemma` on 31B and within about 2% (noisy) on
+26B-A4B.
+
+### Features
+
+* **models:** Gemma 4 31B (Unsloth `UD-Q4_K_XL`, `UD-Q8_K_XL`), 31B QAT
+  (Q4_0) and the 26B-A4B mixture of experts (`UD-Q4_K_XL`, `UD-Q6_K_XL`,
+  `UD-Q8_K_XL`) on Strix Halo `gfx1151`.
+* **serving:** `gufo serve llm` with every text endpoint, reasoning
+  (`reasoning_content`, `reasoning_tokens` and reasoning budgets), native tool
+  calls (buffered and streamed), image input through the BF16 vision sidecar,
+  batched sessions, and RAM and disk prompt caching; `gufo prompt` and
+  `gufo bench` through the extension's drivers.
+* **speculation:** `gemma4-assistant` MTP drafting of up to 15 tokens with the
+  calibrated policy, and prompt lookup.
+* **provider options:** `--image-tokens`, `--draft-calibration`,
+  `--draft-trace` and `--prefill-weights`.
+* **docs:** the 26B-A4B, 31B and 31B QAT model cards, with their benchmarks
+  and quality reports, now live here.
+
+### Bug Fixes
+
+* **reasoning:** reasoning budgets are honored past the thought header.
+* **reasoning:** the thought block is closed after tool responses when
+  thinking is off.
+* **context:** `--context 0` loads the model's native context.
+* **build:** the chat template links ICU, which it includes
+  ([#1](https://github.com/franzmoca/gemma4-gufo-extension/pull/1), by
+  [@fedeizzo](https://github.com/fedeizzo)), and
+  prefill attention builds with strict floating point under Clang 24.
